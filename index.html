@@ -25,7 +25,7 @@
 
     .header { text-align: center; margin-bottom: 25px; }
 
-    .brand {
+        .brand {
       font-size: 32px;
       font-weight: 900;
       letter-spacing: 1px;
@@ -244,8 +244,8 @@
     }
 
     .announcement {
-      background: #6f1721;
-      border: 1px solid #a83a46;
+      background: #d71920;
+      border: 1px solid #ff4a4f;
       color: #fff;
       border-radius: 13px;
       padding: 13px 14px;
@@ -253,6 +253,22 @@
       text-align: center;
       line-height: 1.7;
       font-size: 14px;
+      font-weight: 800;
+      overflow: hidden;
+      white-space: nowrap;
+    }
+
+    .announcement-text {
+      display: inline-block;
+      font-weight: 800;
+      white-space: nowrap;
+      animation: announcementMove 12s linear infinite;
+      will-change: transform;
+    }
+
+    @keyframes announcementMove {
+      from { transform: translateX(-110%); }
+      to { transform: translateX(110%); }
     }
 
     .stats-card {
@@ -360,6 +376,7 @@
 
     .prediction-btn { padding: 11px 5px; }
     .risk-btn { padding: 10px 4px; }
+
 
     .match-multiplier {
       color: #d9b65c;
@@ -1159,17 +1176,11 @@ async function loginPlayer() {
 
     updateRiskDisplay();
     await loadCompetition();
- } catch (error) {
-  console.error(error);
-
-  const msg = String(error?.message || "");
-
-  if (msg.includes("محاولات كثيرة")) {
-    showMessage("❌ محاولات كثيرة، يرجى المحاولة بعد عدة دقائق.", "error");
-  } else {
-    showMessage("❌ اسم المستخدم أو كلمة المرور غير صحيحة.", "error");
-  }
-} finally {
+  } catch (error) {
+    console.error("Login error:", error);
+    const loginError = String(error?.message || error?.error_description || "خطأ غير معروف").trim();
+    showMessage("❌ تعذر تسجيل الدخول: " + loginError, "error");
+  } finally {
     button.disabled = false;
     button.textContent = "دخول";
   }
@@ -1180,6 +1191,16 @@ async function loadCompetition() {
     const sessionToken = localStorage.getItem(SESSION_KEY);
     if (!sessionToken) throw new Error("انتهت جلسة الدخول. يرجى تسجيل الدخول من جديد.");
 
+    /*
+      Expected secure RPC response:
+      {
+        success, phase: {key,name,prize,end_date}, risk_balance,
+        phase_points, correct_predictions, rank,
+        matches: [...], predictions: [...],
+        announcement: {text} | null,
+        champion: {phase_name,username,points} | null
+      }
+    */
     const { data, error } = await supabaseClient.rpc("get_player_dashboard", {
       p_session_token: sessionToken
     });
@@ -1266,7 +1287,7 @@ function renderAnnouncement(announcement) {
     return;
   }
 
-  box.textContent = text;
+  box.innerHTML = `<span class="announcement-text">${escapeHtml(text)}</span>`;
   box.classList.remove("hidden");
 }
 
@@ -1314,8 +1335,8 @@ function renderMatches() {
   const container = document.getElementById("matchesContainer");
 
   const upcoming = matches
-  .filter(match => match.status === "scheduled")
-  .sort((a,b) => new Date(a.kickoff) - new Date(b.kickoff));
+    .filter(match => match.status === "scheduled")
+    .sort((a,b) => new Date(a.kickoff) - new Date(b.kickoff));
 
   if (!activePhase || upcoming.length === 0) {
     container.innerHTML = `
@@ -1329,6 +1350,11 @@ function renderMatches() {
 
   container.innerHTML = "";
   upcoming.forEach(match => container.appendChild(createMatchCard(match)));
+}
+
+function formatMultiplier(value) {
+  const n = Number(value ?? 1);
+  return Number.isInteger(n) ? String(n) : String(Number(n.toFixed(2)));
 }
 
 function createMatchCard(match) {
@@ -1368,25 +1394,27 @@ function createMatchCard(match) {
     <div class="prediction-buttons">
       <button class="prediction-btn ${existing.outcome === "home" ? "selected" : ""}"
         onclick="selectPrediction(${match.id}, 'home')" ${isLocked ? "disabled" : ""}>
-        ${escapeHtml(match.home_team)} <span class="match-multiplier">×${formatMultiplier(match.home_multiplier)}</span>
+        ${escapeHtml(match.home_team)}${match.multiplier_enabled ? ` <span class="match-multiplier">×${formatMultiplier(match.home_multiplier)}</span>` : ""}
       </button>
 
       <button class="prediction-btn ${existing.outcome === "draw" ? "selected" : ""}"
         onclick="selectPrediction(${match.id}, 'draw')" ${isLocked ? "disabled" : ""}>
-        تعادل <span class="match-multiplier">×${formatMultiplier(match.draw_multiplier)}</span>
+        تعادل${match.multiplier_enabled ? ` <span class="match-multiplier">×${formatMultiplier(match.draw_multiplier)}</span>` : ""}
       </button>
 
       <button class="prediction-btn ${existing.outcome === "away" ? "selected" : ""}"
         onclick="selectPrediction(${match.id}, 'away')" ${isLocked ? "disabled" : ""}>
-        ${escapeHtml(match.away_team)} <span class="match-multiplier">×${formatMultiplier(match.away_multiplier)}</span>
+        ${escapeHtml(match.away_team)}${match.multiplier_enabled ? ` <span class="match-multiplier">×${formatMultiplier(match.away_multiplier)}</span>` : ""}
       </button>
     </div>
 
-    <div class="match-multiplier-help">
-      <strong>💡 معامل المباراة</strong><br>
-      الرقم بجانب التوقع يحدد مضاعف النقاط.<br>
-      <strong>مثال: ×2 تضاعف النقاط، ×1.5 تضاعفها مرة ونصف.</strong>
-    </div>
+    ${match.multiplier_enabled ? `
+      <div class="match-multiplier-help">
+        <strong>💡 معامل المباراة</strong><br>
+        الرقم بجانب التوقع يحدد مضاعف النقاط.<br>
+        <strong>مثال: ×2 تضاعف النقاط، ×3 تضاعفها ثلاث مرات.</strong>
+      </div>
+    ` : ""}
 
     <div class="section-label">نقاط المخاطرة</div>
 
@@ -1409,12 +1437,6 @@ function createMatchCard(match) {
   `;
 
   return card;
-}
-
-function formatMultiplier(value) {
-  const n = Number(value ?? 1);
-  if (!Number.isFinite(n)) return "1";
-  return Number.isInteger(n) ? String(n) : String(Number(n.toFixed(2)));
 }
 
 function refreshMatchCard() {
@@ -1589,6 +1611,7 @@ async function loadLeaderboard() {
           <thead>
             <tr>
               <th>الترتيب</th>
+              <th>الترتيب</th>
               <th>اللاعب</th>
               <th>النقاط</th>
               <th>التوقعات الصحيحة</th>
@@ -1659,7 +1682,6 @@ async function loadLeaderboardPage(page) {
         <table>
           <thead>
             <tr>
-              <th>الترتيب</th>
               <th>اللاعب</th>
               <th>النقاط</th>
               <th>التوقعات الصحيحة</th>
